@@ -114,7 +114,7 @@ class Term:
             The standard string representation of the current term.
         """
         # Task 7.1
-        if self.arguments is None:
+        if is_constant(self.root) or is_variable(self.root):
             return self.root
         return self.root + '(' + ','.join(map(str, self.arguments)) + ')'
 
@@ -163,19 +163,24 @@ class Term:
         if not string:
             raise ValueError("Empty string")
             
+        if string[0] == '_':
+            return Term('_'), string[1:]
+            
         name = ""
         i = 0
-        while i < len(string) and (string[i].isalnum() or string[i] == '_'):
+        while i < len(string) and string[i].isalnum():
             name += string[i]
             i += 1
             
         remainder = string[i:]
         
-        if is_function(name) and remainder.startswith('('):
+        if is_function(name):
+            if not remainder.startswith('('):
+                raise ValueError("Expected '(' after function name")
             args = []
             remainder = remainder[1:]
             if remainder.startswith(')'):
-                return Term(name, []), remainder[1:]
+                raise ValueError("Functions must have at least one argument")
             while True:
                 arg, remainder = Term._parse_prefix(remainder)
                 args.append(arg)
@@ -184,7 +189,7 @@ class Term:
                 if not remainder.startswith(','):
                     raise ValueError("Expected ',' or ')'")
                 remainder = remainder[1:]
-        
+                
         if is_constant(name) or is_variable(name):
             return Term(name), remainder
             
@@ -439,15 +444,16 @@ class Formula:
             The standard string representation of the current formula.
         """
         # Task 7.2
+        if is_relation(self.root) or is_equality(self.root):
+            if is_equality(self.root):
+                return str(self.arguments[0]) + '=' + str(self.arguments[1])
+            return self.root + '(' + ','.join(map(str, self.arguments)) + ')'
         if is_unary(self.root):
             return '~' + str(self.first)
         if is_binary(self.root):
             return '(' + str(self.first) + self.root + str(self.second) + ')'
         if is_quantifier(self.root):
             return self.root + self.variable + '[' + str(self.statement) + ']'
-        if is_equality(self.root):
-            return str(self.arguments[0]) + '=' + str(self.arguments[1])
-        return self.root + '(' + ','.join(map(str, self.arguments)) + ')'
 
     def __eq__(self, other: object) -> bool:
         """Compares the current formula with the given one.
@@ -495,47 +501,47 @@ class Formula:
         if not string:
             raise ValueError("Empty string")
 
-        if is_unary(string[0]):
+        if string[0] == '~':
             formula, remainder = Formula._parse_prefix(string[1:])
             return Formula('~', formula), remainder
 
-        if is_quantifier(string[0]):
+        if string[0] in ('A', 'E'):
             q = string[0]
+            name = ""
             i = 1
-            var = ""
-            while i < len(string) and (string[i].isalnum() or string[i] == '_'):
-                var += string[i]
+            while i < len(string) and string[i].isalnum():
+                name += string[i]
                 i += 1
             remainder = string[i:]
             if not remainder.startswith('['):
-                raise ValueError("Expected '['")
+                raise ValueError("Expected '[' after quantified variable")
             statement, remainder = Formula._parse_prefix(remainder[1:])
             if not remainder.startswith(']'):
                 raise ValueError("Expected ']'")
-            return Formula(q, var, statement), remainder[1:]
+            return Formula(q, name, statement), remainder[1:]
 
         if string[0] == '(':
             first, remainder = Formula._parse_prefix(string[1:])
             op = ""
             if remainder.startswith('->'):
                 op = "->"
-            elif remainder and is_binary(remainder[0]):
+            elif remainder and remainder[0] in ('&', '|'):
                 op = remainder[0]
             else:
                 raise ValueError("Expected binary operator")
+                
             remainder = remainder[len(op):]
             second, remainder = Formula._parse_prefix(remainder)
             if not remainder.startswith(')'):
                 raise ValueError("Expected ')'")
             return Formula(op, first, second), remainder[1:]
 
-        name = ""
-        i = 0
-        while i < len(string) and (string[i].isalnum() or string[i] == '_'):
-            name += string[i]
-            i += 1
-        
-        if is_relation(name):
+        if string[0] >= 'F' and string[0] <= 'T':
+            name = ""
+            i = 0
+            while i < len(string) and string[i].isalnum():
+                name += string[i]
+                i += 1
             remainder = string[i:]
             if remainder.startswith('('):
                 args = []
@@ -550,7 +556,7 @@ class Formula:
                     if not remainder.startswith(','):
                         raise ValueError("Expected ',' or ')'")
                     remainder = remainder[1:]
-            return Formula(name, []), string[i:]
+            return Formula(name, []), remainder
 
         term1, remainder = Term._parse_prefix(string)
         if not remainder.startswith('='):
